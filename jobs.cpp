@@ -5,40 +5,45 @@ Purpoose: This program takes as a command line argument a jobs.txt file in the f
 		  FCFS, then SJF, then Priority, and then the user will be prompted to enter a time quantum.
 		  Then the program will output the information in the following format:
 		  FCFS:
+		  if(verbose)
+		  total time , time in min. , Throughput:
 		  Job number 1: turnaround time: wait time:
 						|
-		  Job number n1: turnaround time: wait time:
-		  total time , time in min. , Throughput:
+		  Job number n: turnaround time: wait time:
 		  average wait time: 
 		  average Turnaround time:
 		  
 		  SJF:
+		  if(verbose)
+		  total time , time in min. , Throughput:
 		  Job number 1: turnaround time: wait time:
 						|
-		  Job number n1: turnaround time: wait time:
+		  Job number n: turnaround time: wait time:
 		  total time , time in min. , Throughput:
 		  average wait time: 
 		  average Turnaround time:
-		  Throughput:
 
           Priority:
+		  if(verbose)
+		  total time , time in min. , Throughput:
 		  Job number 1: turnaround time: wait time:
 						|
-		  Job number n1: turnaround time: wait time:
+		  Job number n: turnaround time: wait time:
 		  total time , time in min. , Throughput:
 		  average wait time: 
 		  average Turnaround time:
-		  Throughput:
 
 		  -->user gives time quantum:
 		  RR:
+		  total time , time in min. , Throughput:
+		  "if verbose"
 		  Job number 1: turnaround time: wait time:
 						|
-		  Job number n1: turnaround time: wait time:
+		  Job number n: turnaround time: wait time:
 		  total time , time in min. , Throughput:
 		  average wait time: 
 		  average Turnaround time:
-		  Throughput:*/
+		*/
 
 
 #include <iostream>
@@ -70,37 +75,15 @@ class job
 		int prempt_time;		//The time this was prempted
 		int getcpu_time;		//The time this was prempted
 		int Pre;				//tells if it got prempted
-		int IN_Q;
-		int ppd;
+		int IN_Q;				//used to tell if the jobs is in the jobs queue
+		int ppd;				//used to tell if this job was justed popped off the jobs queue
 
 };
 
-int  pre_empt( multimap<int, job*> &SJF, job * current_job, int crnt)
-{
-	multimap<int, job*>::iterator jbit;
-
-	job * sjfp;
-
-	int rtn = 0;
-
-	for( jbit = SJF.begin() ; jbit != SJF.end() ;jbit++)
-	{
-		sjfp = jbit->second;
-		
-		if( current_job->cpu_burst > sjfp->cpu_burst  && crnt >= sjfp->arrive_time && sjfp->timeleft > 0)
-		{
-			printf("job %d will be prempted by job %d\n",current_job->job_number, sjfp->job_number);
-			current_job = sjfp;	
-			rtn = 1;
-		}
-	}
-
-	return rtn;
-}
 
 /*This function calculates the average wait time, and the average turn around time for the
  * jobs stored in the give map*/
-int avg_wait( multimap<int, job*> &job_map)
+int avg_time( multimap<int, job*> &job_map)
 {
 	map <int , job *>::iterator jbit;
 
@@ -118,7 +101,6 @@ int avg_wait( multimap<int, job*> &job_map)
 	{
 		jbp = jbit->second;
 
-		//printf("wait_time: %d, Id %d wt = %d\n", jbp->wait_time, jbp->job_number, jbp->turnaround_time - jbp->cpu_burst);
 		sum += jbp->wait_time;
 
 		turnsum += jbp->turnaround_time;
@@ -126,7 +108,7 @@ int avg_wait( multimap<int, job*> &job_map)
 		cnt++;
 	}
 	
-	printf("Sum: %d, cnt:%d\n", sum, cnt);
+	printf("Total wait: %d, Total turnaround: %d, Number of jobs:%d\n", sum, turnsum, cnt);
 
 	wavg = (float) sum/cnt;
 	tavg = (float) turnsum/cnt;
@@ -138,34 +120,14 @@ int avg_wait( multimap<int, job*> &job_map)
 }
 
 
-//The below functions will set the wait time of the jobs stred in the given jobs map
-int Set_wait( multimap < int, job *> mmap)
-{
-	multimap <int, job *> ::iterator jbit;
-
-
-	job * jp;
-
-	for( jbit = mmap.begin() ; jbit != mmap.end() ;jbit++)
-	{
-		jp = jbit->second;
-
-
-		jp->wait_time = jp->turnaround_time - jp->cpu_burst;
-
-		printf("the wait time for job %d is : %d\n", jp->job_number, jp->wait_time);
-
-	}
-
-	return 0;
-}
 
 //The below fucntion will decide if a the current job keeps the CPU or gets prempted by an arriving 
 //job with a higher priority. IT returns a pointer the the job that has the cpu
-//It takes a map that keyed on priority, and that has job pointers as vals, the job that currently has
+//It takes a map that is  keyed on priority, and that has job pointers as vals, a pointer to the job that currently has
 //the cpu, and the current time passed since the first job arrived.
 job * get_job2( multimap <int, job *>&priority, job * c_job, int c_time)
 {
+	job * rtn_jb = c_job;
 
 	multimap <int , job *>::iterator jbit;
 
@@ -174,36 +136,40 @@ job * get_job2( multimap <int, job *>&priority, job * c_job, int c_time)
 	int cpu_burst;
 
 
-//	printf("the current job at first is %d Pr: %d\n", c_job->job_number, c_job->priority);
 
 	for( jbit = priority.begin() ; jbit != priority.end() ;jbit++)
 	{
 		jp = jbit->second; 
 		
-//		printf("at time %d looking at job %d arv: %d Pri: %d\n", c_time, jp->job_number,jp->arrive_time,  jp->priority);
 
-		cpu_burst = jp->cpu_burst;
-
+		/*The below code block looks for a job that has arrived, has timeleft, and has a higher priority
+		 * if found it sets that jobs wait time and stores adjusts the old current jobs wait time, 
+		 * as well by adding the extra wait time to the old current job if it has already been prempted before*/
 		if( c_time >= jp->arrive_time && jp->timeleft > 0 && jp->priority >  c_job->priority)
 		{
-//			printf("Prempting job %d at time %d returning job %d\n", c_job->job_number, c_time, jp->job_number);
 			jp->wait_time = c_time - jp->arrive_time;
 			jp->getcpu_time = c_time;
-		
+
+			/*If the old current job has been prempted before adjust its wait time*/
 			if( c_job->Pre)
 			{
 				c_job->wait_time += c_time - c_job->prempt_time;
 			}
+		
+			//store the old current jobs new prempted time
 			c_job->prempt_time = c_time;
 			
-			return jp;
+			/*mark that the old current job got prempted*/
+			c_job->Pre = 1;
+
+			rtn_jb = jp;
+		//	return jp;
 		}
 
 
 	}
 
-//	printf("returning current job %d\n", c_job->job_number);
-	return c_job;
+	return rtn_jb;;
 }
 
 
@@ -224,22 +190,24 @@ job * get_job( multimap <int, job *>&arrive_time, job * c_job, int c_time)
 	{
 		jp = jbit->second; 
 		
-//		printf("looking at job %d\n", jp->job_number);
-
-		cpu_burst = jp->cpu_burst;
-
+		/*The below code block looks for a job that has arrived, has timeleft, and has a lower time left
+		 * if found it sets that jobs wait time and stores adjusts the old current jobs wait time, 
+		 * as well by adding the extra wait time to the old current job if it has already been prempted before*/
 		if( c_time >= jp->arrive_time && jp->timeleft > 0 && jp->timeleft < c_job->timeleft)
 		{
-		//	printf("Prempting job %d at time %d returning job %d\n", c_job->job_number, c_time, jp->job_number);
 			jp->wait_time = c_time - jp->arrive_time;
 			jp->getcpu_time = c_time;
 		
+			/*If the old current job has been prempted before adjust its wait time*/
 			if( c_job->Pre)
 			{
 				c_job->wait_time += c_time - c_job->prempt_time;
 			}
+
+			//store the old current jobs new prempted time
 			c_job->prempt_time = c_time;
-			
+		
+			/*mark that the old current job got prempted*/
 			c_job->Pre = 1;
 			return jp;
 		}
@@ -247,16 +215,15 @@ job * get_job( multimap <int, job *>&arrive_time, job * c_job, int c_time)
 
 	}
 
-//	printf("returning current job %d\n", c_job->job_number);
-//	c_job->getcpu_time = c_time;
 	return c_job;
 
 }
 
 
+/*This is the priority scheduler it works very similiarly to the SJF scheduler, but instead of 
+ * time left it prempts based on Priority*/
 int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &priority)
 {
-	printf("doing Priority\n");
 
 	int cnt = 0, a_tm = 0;
 
@@ -290,11 +257,9 @@ int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &prio
 
 
 	int total_time = 0;
-	//if( pre_empt( SJF, jbp, total_time) ) printf("job %d was prempted by %d\n", old_jb->job_number, jbp->job_number);
 
 	int jb_nm, jb_nm2, mywait;
 
-//	printf("there are %d jobs to do\n", jobs_left);
 
 	jbit = priority.begin();
 
@@ -302,8 +267,6 @@ int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &prio
 
 	while( jobs_left > 0)
 	{
-//		oj = c_job;
-//		jb_nm2 = c_job->job_number;
 		c_job = get_job2( priority , c_job, total_time);
 		
 		jb_nm = c_job->job_number;
@@ -312,26 +275,16 @@ int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &prio
 
 		if(c_job->Pre)
 		{
-		//	printf("job %d was prempted at time %d and current wat: %d c_t: %d\n", c_job->job_number, c_job->prempt_time, c_job->wait_time, total_time);
 			c_job->wait_time += total_time - c_job->prempt_time;
-		//	printf("Now job %d was prempted at time %d and current wat: %d\n", c_job->job_number, c_job->prempt_time, c_job->wait_time);
 			c_job->Pre = 0;
 		}
 
-//		if( jb_nm != jb_nm2)
-//		{
-//			oj->prempt_time = total_time;
-//			c_job->getcpu_time = total_time;
-//		}
 
-		//printf("the c_time is %d,  current job is %d and it has %d left \n", total_time, jb_nm, c_job->timeleft);
 		total_time++;
 		c_job->timeleft--;
-		//printf("the c_time is %d,  current job is %d and it has %d left \n", total_time, jb_nm, c_job->timeleft);
+
 		if( c_job->timeleft <= 0 )
 		{
-
-			//printf("----------->finished job %d at time %d\n", c_job->job_number, total_time);
 
 			for( jbit = priority.begin() ; jbit != priority.end() ;jbit++)
 			{
@@ -339,18 +292,14 @@ int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &prio
 				if( jbp->job_number == jb_nm)
 				{
 					mywait += jbp->wait_time;
-//					printf("erasing job %d\n", jbp->job_number);
 					priority.erase(jbit);
 				}
 			}
-			//arrive_time.erase( a_tm );
 		
 			jbit2 = job_number.find(jb_nm );
 
 			old_jb = jbit2->second;
-
 			
-//			old_jb->wait = mywait;
 			old_jb->turnaround_time = old_jb->wait_time + old_jb->cpu_burst;
 			jobs_left--;
 			jbit = priority.begin();
@@ -358,20 +307,10 @@ int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &prio
 			if( priority.size() > 0)
 			{
 				c_job = jbit->second;
-//				printf("the current job is now %d \n", c_job->job_number);
-//				printf("now there are %d jobs left to do\n", jobs_left);
 			}
-//			else printf("all jobs are done\n");
 		}
 
 	}
-	
-
-		//total_time += jbp->cpu_burst;
-
-	//	printf("total time is now %d\n", total_time);
-	//	cnt++;
-		
 	
 		float min = (float) total_time/60;
 
@@ -384,7 +323,6 @@ int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &prio
 			for( jbit = job_number.begin() ; jbit != job_number.end() ;jbit++)
 			{
 				jbp = jbit->second;
-				//	jbp->wait_time = jbp->turnaround_time - jbp->cpu_burst;
 				printf("ID: %d , Turnaround: %d, waittime: %d\n", jbp->job_number, jbp->turnaround_time, jbp->wait_time);
 			}
 		}
@@ -392,14 +330,11 @@ int Priority_Sch( multimap <int, job *> &job_number, multimap <int, job *> &prio
 }
 
 
-/*The below function does priority based jobs scheduling: It watches as jobs arrive 
- * and if a job arrives with a higher priority the cpu is given to the higher priority job*/
 
 /*The below function does shortest cpu burst based jobs scheduling: It watches as jobs arrive 
  * and if a job arrives with a lower CPU burst time  the cpu is given to the lower CPU burst time job*/
 int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arrive_time)
 {
-	printf("doing SJF\n");
 
 	int cnt = 0, a_tm = 0;
 
@@ -431,11 +366,9 @@ int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arr
 
 
 	int total_time = 0;
-	//if( pre_empt( SJF, jbp, total_time) ) printf("job %d was prempted by %d\n", old_jb->job_number, jbp->job_number);
 
 	int jb_nm, jb_nm2, mywait;
 
-	//	printf("there are %d jobs to do\n", jobs_left);
 
 	jbit = arrive_time.begin();
 
@@ -443,8 +376,6 @@ int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arr
 
 	while( jobs_left > 0)
 	{
-		//		oj = c_job;
-		//		jb_nm2 = c_job->job_number;
 		c_job = get_job( arrive_time , c_job, total_time);
 
 		jb_nm = c_job->job_number;
@@ -453,26 +384,17 @@ int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arr
 
 		if(c_job->Pre)
 		{
-			//		printf("job %d was prempted at time %d and current wat: %d c_t: %d\n", c_job->job_number, c_job->prempt_time, c_job->wait_time, total_time);
 			c_job->wait_time += total_time - c_job->prempt_time;
-			//		printf("Now job %d was prempted at time %d and current wat: %d\n", c_job->job_number, c_job->prempt_time, c_job->wait_time);
 			c_job->Pre = 0;
 		}
 
-		//		if( jb_nm != jb_nm2)
-		//		{
-		//			oj->prempt_time = total_time;
-		//			c_job->getcpu_time = total_time;
-		//		}
 
-		//		printf("the c_time is %d,  current job is %d and it has %d left \n", total_time, jb_nm, c_job->timeleft);
 		total_time++;
 		c_job->timeleft--;
-		//		printf("the c_time is %d,  current job is %d and it has %d left \n", total_time, jb_nm, c_job->timeleft);
+
 		if( c_job->timeleft <= 0 )
 		{
 
-			//			printf("----------->finished job %d\n", c_job->job_number);
 
 			for( jbit = arrive_time.begin() ; jbit != arrive_time.end() ;jbit++)
 			{
@@ -480,18 +402,14 @@ int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arr
 				if( jbp->job_number == jb_nm)
 				{
 					mywait += jbp->wait_time;
-					//					printf("erasing job %d\n", jbp->job_number);
 					arrive_time.erase(jbit);
 				}
 			}
-			//arrive_time.erase( a_tm );
 
 			jbit2 = job_number.find(jb_nm );
 
 			old_jb = jbit2->second;
 
-
-			//			old_jb->wait = mywait;
 			old_jb->turnaround_time = old_jb->wait_time + old_jb->cpu_burst;
 			jobs_left--;
 			jbit = arrive_time.begin();
@@ -499,20 +417,10 @@ int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arr
 			if( arrive_time.size() > 0)
 			{
 				c_job = jbit->second;
-				//				printf("the current job is now %d \n", c_job->job_number);
-				//				printf("now there are %d jobs left to do\n", jobs_left);
 			}
-			//			else printf("all jobs are done\n");
 		}
 
 	}
-
-
-	//total_time += jbp->cpu_burst;
-
-	//	printf("total time is now %d\n", total_time);
-	//	cnt++;
-
 
 	float min = (float) total_time/60;
 
@@ -527,7 +435,6 @@ int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arr
 		for( jbit = job_number.begin() ; jbit != job_number.end() ;jbit++)
 		{
 			jbp = jbit->second;
-			//	jbp->wait_time = jbp->turnaround_time - jbp->cpu_burst;
 			printf("ID: %d , Turnaround: %d, waittime: %d\n", jbp->job_number, jbp->turnaround_time, jbp->wait_time);
 		}
 	}
@@ -542,7 +449,6 @@ int SJF_scheduler( multimap <int, job *> &job_number, multimap <int, job *> &arr
  * each job,  that jobs turnaround time, and wait time*/
 int FCFS_scheduler( multimap <int, job *> &FCFS)
 {
-	//	printf("doing FCFS\n");
 
 	int cnt = 0, prev_burst = 0;;
 
@@ -559,30 +465,19 @@ int FCFS_scheduler( multimap <int, job *> &FCFS)
 	for( jbit = FCFS.begin() ; jbit != FCFS.end() ;jbit++)
 	{
 		jbp = jbit->second;
-		//		printf("total time is %d and job %d's arrive time is %d\n", total_time, jbp->job_number, jbp->arrive_time);
-		//		printf("ID: %d , the cpu burst is %d\n",jbp->job_number, jbp->cpu_burst);
 		while( total_time < jbp->arrive_time)
 		{
 			current_time++;
 			total_time++;
-			//		printf("the time is %d\n", current_time);
 		}
 
-		//		printf("before op total time is %d job is %d and arivtime is %d\n", total_time, jbp->job_number, jbp->arrive_time);
 		jbp->wait_time = total_time - jbp->arrive_time ;
-		//		printf("total time is %d\n", total_time);
-		//		printf("job %d arrived at %d\n", jbp->job_number, current_time);
-
-
-		//		printf("ID: %d , the wait time is %d\n",jbp->job_number, jbp->wait_time);
 
 		total_time += jbp->cpu_burst;
 		jbp->turnaround_time = jbp->wait_time + jbp->cpu_burst;
 
-		//	printf("total time is now %d\n", total_time);
 		cnt++;
 
-		//prev_j = jbp;
 	}
 
 	float min = (float) total_time/60;
@@ -626,8 +521,6 @@ int RR_scheduler( multimap< int,job *> RR , int quantum)
 		jbp->timeleft = jbp->cpu_burst;
 		jbp->IN_Q = 0;
 		jbp->ppd = 0;
-		//		printf("pushing ID %d with time left %d\n", jbp->job_number, jbp->timeleft);
-		//		job_q.push( jbit->second );
 	}
 
 	jbit = RR.begin();
@@ -649,15 +542,9 @@ int RR_scheduler( multimap< int,job *> RR , int quantum)
 		for( mtime = 1; jbp->timeleft > 0 && mtime <=  quantum; mtime++)
 		{
 
-			//		printf("\nID %d, timeleft :%d, mtime %d total: %d\n", jbp->job_number, jbp->timeleft, mtime, total_time);
 
 			jbp->timeleft = jbp->timeleft - 1;
 			total_time += 1;
-			//jbp->turnaround_time = total_time;
-
-			//		printf("\ntotal time is %d Jb:%d jbrt:%d\n", total_time, jbp->job_number, jbp->turnaround_time);
-
-			//		printf("time is now %d timeleft %d\n", mtime,jbp->timeleft);
 
 		}
 
@@ -666,11 +553,9 @@ int RR_scheduler( multimap< int,job *> RR , int quantum)
 			jb2 = jbit->second;
 			if( total_time >= jb2->arrive_time && jb2->timeleft > 0 && jb2->IN_Q == 0 && jb2->ppd != 1)
 			{
-				//			printf("adding job %d to the que at time %d\n", jb2->job_number, total_time);
 				jb2->IN_Q = 1;
 				job_q.push( jb2 );
 			}
-			//		else printf("didnt add %d to que time left %d, inq %d\n", jb2->job_number, jb2->timeleft, jb2->IN_Q);
 		}
 
 		if( jbp->timeleft <= 0)
@@ -683,7 +568,6 @@ int RR_scheduler( multimap< int,job *> RR , int quantum)
 		else	
 		{	jbp->ppd = 0;
 			jbp->IN_Q = 1;
-			//		printf("adding job %d at time %d\n", jbp->job_number, total_time);
 			job_q.push( jbp );
 		}
 
@@ -703,7 +587,6 @@ int RR_scheduler( multimap< int,job *> RR , int quantum)
 		for( jbit = RR.begin() ; jbit != RR.end() ;jbit++)
 		{
 			jbp = jbit->second;
-//			jbp->wait_time = jbp->turnaround_time - jbp->cpu_burst;
 			printf("ID: %d , Turnaround: %d, waittime: %d\n", jbp->job_number, jbp->turnaround_time, jbp->turnaround_time - jbp->cpu_burst);
 		}
 	}
@@ -772,7 +655,6 @@ int main( int argc, char ** argv)
 
 
 		jb1->timeleft = jb1->cpu_burst;
-		//printf("jobid: %d\n,arv: %d\n,CPUB: %d\n,Pri %d\n", jb1->job_number, jb1->arrive_time, jb1->cpu_burst, jb1->priority); 
 
 		FCFS.insert( make_pair( jb1->arrive_time, jb1) );
 		SJF.insert( make_pair( jb1->cpu_burst, jb1) );
@@ -786,83 +668,38 @@ int main( int argc, char ** argv)
 	}
 
 	int id, cpb, pr;
-	/*
-	   printf("FCFS:\n");
-	   for( jmbit = FCFS.begin() ; jmbit != FCFS.end() ;jmbit++)
-	   {
-	   jb1 = jmbit->second;
-	   printf("Arrive time: %d , ID: %d arivet: %d\n", jmbit->first, jb1->job_number, jb1->arrive_time);
 
-	   }
-	   */
-	/*
-	   printf("SJF:\n");
-	   for( jmbit = SJF.begin() ; jmbit != SJF.end() ;jmbit++)
-	   {
 
-	   jb1 = (*jmbit).second;
-	   printf("CPU burst: %d  ID: %d\n", jmbit->first, jb1->job_number);
-	   }
-	   */
-	/*
-	   printf("RR:\n");
-	   for( jmbit = RR.begin() ; jmbit != RR.end() ;jmbit++)
-	   {
-	   jb1 = jmbit->second;
-	   printf("RR: %d , ID: %d\n", jmbit->first, jb1->job_number);
-
-	   }
-	   */
-
-	/*
-	   printf("Priority:\n");
-	   for( jmbit = Priority.begin() ; jmbit != Priority.end() ;jmbit++)
-	   {
-	   jb1 = jmbit->second;
-	   printf("Priority: %d , ID: %d\n", jmbit->first, jb1->job_number);
-
-	   }
-	   */
-
-	/*
-	   printf("Arrive time:\n");
-	   for( jmbit = Priority.begin() ; jmbit != Priority.end() ;jmbit++)
-	   {
-	   jb1 = jmbit->second;
-	   printf("Priority: %d , ID: %d\n", jmbit->first, jb1->job_number);
-
-	   }
-	   */
-
-	printf("\nfirst Come First Serve:\n");
+	printf("\nFirst Come First Serve:\n");
 	FCFS_scheduler(  FCFS );
 
-	avg_wait(FCFS);
+	avg_time(FCFS);
 	printf("\n\n");
 
 
-	printf("\nShortest Job first:\n");
+	printf("\nShortest Job First:\n");
 	SJF_scheduler( job_number, arrivetime );
 
-	avg_wait( job_number);
+	avg_time( job_number);
 	printf("\n\n");
 
 
-	printf("Priority\n");
+	printf("Priority:\n");
 	Priority_Sch( job_number_P, Priority);
 
-	avg_wait( job_number_P);
+	avg_time( job_number_P);
 	printf("\n\n");
 
 
-	printf("give me the time quantum: ");
+	printf("---------->PLEASE GIVE ME THE TIME QUANTUM: ");
 
 	scanf("%d",&q);
 	printf("\n");
 
-	printf("the q is %d\n", q);
+	printf("the time quantum is %d\n\n", q);
+	printf("Round Robin:\n");
 	RR_scheduler( RR, q);
-	avg_wait( RR);
+	avg_time( RR);
 	printf("\n\n");
 
 	return 0;
